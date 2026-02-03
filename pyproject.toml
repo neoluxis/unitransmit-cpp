@@ -1,0 +1,38 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.9",
+    "pybind11>=2.11",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "unitransmit"
+version = "0.1.0"
+description = "Unified transport interface for multiple protocols."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [
+    { name = "Neolux" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.16"
+cmake.args = ["-DUNITRANSMIT_BUILD_PYTHON=ON"]
+wheel.packages = ["unitransmit"]
+
+[tool.scikit-build.sdist]
+include = [
+    "CMakeLists.txt",
+    "include/**",
+    "src/**",
+    "python/**",
+    "unitransmit/**",
+    "README.md",
+]

@@ -1,0 +1,12 @@
+build
+cmake-build-*
+
+dist
+*.pyc
+.conda
+conda
+.venv
+venv
+
+
+
