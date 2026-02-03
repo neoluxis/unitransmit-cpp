@@ -5,7 +5,7 @@ project(unitransmit)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(UNITRANSMIT_BUILD_PYTHON "Build Python bindings" ON)
+option(UNITRANSMIT_BUILD_PYTHON "Build Python bindings" OFF)
 
 set(SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/UniTransmit.cpp
@@ -39,35 +39,7 @@ if (WIN32)
 endif ()
 
 if (UNITRANSMIT_BUILD_PYTHON)
-    find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
-    if (Python3_VERSION VERSION_LESS 3.11)
-        message(FATAL_ERROR "Python >= 3.11 is required for bindings. Found ${Python3_VERSION}.")
-    endif ()
-
-    include(FetchContent)
-    FetchContent_Declare(
-            pybind11
-            GIT_REPOSITORY https://github.com/pybind/pybind11.git
-            GIT_TAG v2.11.1
-    )
-    FetchContent_MakeAvailable(pybind11)
-
-    pybind11_add_module(_unitransmit MODULE
-            ${CMAKE_CURRENT_SOURCE_DIR}/python/bindings.cpp
-    )
-    target_link_libraries(_unitransmit PRIVATE ${PROJECT_NAME}_static)
-    target_include_directories(_unitransmit PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-    install(TARGETS _unitransmit
-            LIBRARY DESTINATION unitransmit
-            RUNTIME DESTINATION unitransmit
-    )
-    install(FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/unitransmit/__init__.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/unitransmit/__init__.pyi
-            DESTINATION unitransmit
-    )
+    message(WARNING "Python bindings are not built by CMake here. Use the pyproject.toml workflow instead.")
 endif ()
 
 enable_testing()
