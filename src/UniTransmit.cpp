@@ -1,5 +1,7 @@
 #include "cc/neolux/utils/unitransmit/Unitransmit.h"
 
+#include "cc/neolux/utils/unitransmit/GATT.h"
+#include "cc/neolux/utils/unitransmit/MQTT.h"
 #include "cc/neolux/utils/unitransmit/Protocol.h"
 #include "cc/neolux/utils/unitransmit/Serial.h"
 #include "cc/neolux/utils/unitransmit/TCP.h"
@@ -76,12 +78,22 @@ std::unique_ptr<ITransport> make_transport(const UrlParts &parts, const Options 
     if (parts.scheme == "serial") {
         return std::make_unique<SerialTransport>(parts, opts);
     }
+    if (parts.scheme == "gatt") {
+        return std::make_unique<GattTransport>(parts, opts);
+    }
+    if (parts.scheme == "mqtt") {
+        return std::make_unique<MqttTransport>(parts, opts);
+    }
     return std::make_unique<LoopbackTransport>(parts.scheme);
 }
 
 std::size_t ITransport::write(const std::vector<std::uint8_t> &data) {
     return write(data.data(), data.size());
 }
+
+bool ITransport::is_ready() const { return true; }
+
+std::string ITransport::last_error() const { return {}; }
 
 std::size_t ITransport::write(const std::string &data) {
     return write(reinterpret_cast<const std::uint8_t *>(data.data()), data.size());
@@ -141,6 +153,12 @@ UniTransmit &UniTransmit::operator>>(std::vector<std::uint8_t> &out) {
 const std::string &UniTransmit::ifname() const { return ifname_; }
 
 const std::string &UniTransmit::scheme() const { return scheme_; }
+
+bool UniTransmit::is_ready() const { return transport_ && transport_->is_ready(); }
+
+std::string UniTransmit::last_error() const {
+    return transport_ ? transport_->last_error() : std::string("transport not started");
+}
 
 void UniTransmit::set_receive_callback(ReceiveCallback callback) {
     {

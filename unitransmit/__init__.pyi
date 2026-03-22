@@ -47,6 +47,14 @@ class UniTransmit:
         """Return the parsed scheme (protocol)."""
         ...
 
+    def is_ready(self) -> bool:
+        """Return whether the underlying transport is ready for I/O."""
+        ...
+
+    def last_error(self) -> str:
+        """Return the last transport error, if any."""
+        ...
+
     def set_receive_callback(self, callback: Callable[[bytes, Dict[str, str]], None] | None) -> None:
         """Set a receive callback invoked with (data, context)."""
         ...

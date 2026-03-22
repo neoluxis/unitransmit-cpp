@@ -22,6 +22,8 @@ public:
     virtual std::vector<std::uint8_t> read_all() = 0;
     virtual std::vector<std::uint8_t> read(std::size_t max_bytes) = 0;
     virtual std::size_t write(const std::uint8_t *data, std::size_t size) = 0;
+    virtual bool is_ready() const;
+    virtual std::string last_error() const;
 
     std::size_t write(const std::vector<std::uint8_t> &data);
     std::size_t write(const std::string &data);
@@ -53,6 +55,8 @@ public:
 
     const std::string &ifname() const;
     const std::string &scheme() const;
+    bool is_ready() const;
+    std::string last_error() const;
 
     void set_receive_callback(ReceiveCallback callback);
     void start();

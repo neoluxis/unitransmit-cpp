@@ -16,6 +16,11 @@ struct Options {
     int data_bits = 8;
     int stop_bits = 1;
     char parity = 'n';
+    std::string topic;
+    std::string tx_topic;
+    std::string rx_topic;
+    std::string client_id;
+    int keep_alive_sec = 30;
 };
 
 struct UrlParts {

@@ -44,6 +44,8 @@ PYBIND11_MODULE(_unitransmit, m) {
         .def("in_waiting", &UniTransmit::in_waiting)
         .def("ifname", &UniTransmit::ifname, py::return_value_policy::reference_internal)
         .def("scheme", &UniTransmit::scheme, py::return_value_policy::reference_internal)
+        .def("is_ready", &UniTransmit::is_ready)
+        .def("last_error", &UniTransmit::last_error)
         .def("set_receive_callback",
              [](UniTransmit &self, py::object callback) {
                  if (callback.is_none()) {

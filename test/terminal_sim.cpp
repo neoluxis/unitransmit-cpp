@@ -13,6 +13,14 @@ using cc::neolux::utils::unitransmit::UniTransmit;
 
 namespace {
 
+void print_instance_state(const UniTransmit &instance) {
+    std::cout << " ready=" << (instance.is_ready() ? 1 : 0);
+    const auto error = instance.last_error();
+    if (!error.empty()) {
+        std::cout << " error=\"" << error << "\"";
+    }
+}
+
 std::string trim_left(const std::string &value) {
     std::size_t start = value.find_first_not_of(" \t\r\n");
     if (start == std::string::npos) {
@@ -96,7 +104,9 @@ int main() {
                 continue;
             }
             for (const auto &pair : instances) {
-                std::cout << pair.first << " (" << pair.second->ifname() << ")\n";
+                std::cout << pair.first << " (" << pair.second->ifname() << ")";
+                print_instance_state(*pair.second);
+                std::cout << "\n";
             }
             continue;
         }
@@ -111,7 +121,9 @@ int main() {
                 continue;
             }
             instances[name] = std::make_unique<UniTransmit>(ifname);
-            std::cout << "created " << name << " scheme=" << instances[name]->scheme() << "\n";
+            std::cout << "created " << name << " scheme=" << instances[name]->scheme();
+            print_instance_state(*instances[name]);
+            std::cout << "\n";
             continue;
         }
         if (cmd == "delete") {
@@ -143,7 +155,9 @@ int main() {
                 continue;
             }
             it->second->start();
-            std::cout << "started\n";
+            std::cout << "started";
+            print_instance_state(*it->second);
+            std::cout << "\n";
             continue;
         }
         if (cmd == "close") {
@@ -178,7 +192,9 @@ int main() {
                 continue;
             }
             std::size_t written = it->second->write(payload);
-            std::cout << "written=" << written << "\n";
+            std::cout << "written=" << written;
+            print_instance_state(*it->second);
+            std::cout << "\n";
             continue;
         }
         if (cmd == "read") {

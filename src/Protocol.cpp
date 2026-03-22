@@ -160,6 +160,26 @@ Options parse_options(const UrlParts &parts) {
     if (it != parts.query.end() && !it->second.empty()) {
         opts.parity = static_cast<char>(std::tolower(it->second[0]));
     }
+    it = parts.query.find("topic");
+    if (it != parts.query.end()) {
+        opts.topic = it->second;
+    }
+    it = parts.query.find("tx");
+    if (it != parts.query.end()) {
+        opts.tx_topic = it->second;
+    }
+    it = parts.query.find("rx");
+    if (it != parts.query.end()) {
+        opts.rx_topic = it->second;
+    }
+    it = parts.query.find("client_id");
+    if (it != parts.query.end()) {
+        opts.client_id = it->second;
+    }
+    it = parts.query.find("keep_alive");
+    if (it != parts.query.end()) {
+        opts.keep_alive_sec = std::atoi(it->second.c_str());
+    }
     return opts;
 }
 

@@ -1,7 +1,7 @@
 # UniTransmit
 
 UniTransmit is a small C++ library that provides a unified interface for multiple transport types
-(TCP, UDP, Serial). You create a `UniTransmit` instance with an `ifname` URI, then read/write with
+(TCP, UDP, Serial, GATT, MQTT). You create a `UniTransmit` instance with an `ifname` URI, then read/write with
 methods or stream operators.
 
 ## Build
@@ -52,6 +52,8 @@ Supported schemes:
 - UDP client: `udp://0.0.0.0:0?remote=host:port`
 - Serial: `serial:///dev/ttyUSB0?baud=115200` (Linux)
 - Serial: `serial://COM3?baud=115200` (Windows)
+- GATT: `gatt://local-device/service?remote=peer-device&tx=cmd&rx=evt`
+- MQTT: `mqtt://127.0.0.1:1883?client_id=node-a&tx=demo/up&rx=demo/down`
 
 Common query parameters:
 - `blocking=1|0` (default 1)
@@ -63,6 +65,44 @@ Common query parameters:
 - `data=<int>` (serial data bits)
 - `stop=<int>` (serial stop bits)
 - `parity=n|e|o` (serial parity)
+- `service=<name-or-uuid>` (GATT service; overrides URI path when provided)
+- `tx=<name-or-uuid>` (GATT outgoing characteristic)
+- `rx=<name-or-uuid>` (GATT incoming characteristic)
+- `device=<name>` (GATT local device; overrides URI host when provided)
+- `topic=<topic>` (MQTT default topic for both publish and subscribe)
+- `tx=<topic>` (MQTT publish topic)
+- `rx=<topic>` (MQTT subscribe topic)
+- `client_id=<id>` (MQTT client identifier)
+- `keep_alive=<sec>` (MQTT keep-alive interval; default 30)
+
+## GATT Notes
+
+The current GATT transport is a process-local adapter that follows the same `ITransport` API as the
+other transports. It uses a device/service/characteristic registry in-process so you can standardize
+URI handling, tests, and upper-layer protocol code without introducing a platform BLE dependency.
+
+Two peers exchange data by cross-wiring `tx` and `rx`:
+
+```cpp
+UniTransmit central("gatt://central/link?remote=peripheral&tx=cmd&rx=evt");
+UniTransmit peripheral("gatt://peripheral/link?remote=central&tx=evt&rx=cmd");
+```
+
+In this example:
+- writes from `central` are delivered to `peripheral`'s `rx=cmd`
+- writes from `peripheral` are delivered to `central`'s `rx=evt`
+
+## MQTT Notes
+
+The MQTT transport is a real MQTT 3.1.1 TCP client with QoS 0 publish/subscribe support. `write()`
+publishes bytes to `tx`, and received payloads from `rx` are queued for `read()` and `read_all()`.
+
+Example:
+
+```cpp
+UniTransmit pub("mqtt://127.0.0.1:1883?client_id=pub&tx=sensor/up&rx=sensor/down");
+UniTransmit sub("mqtt://127.0.0.1:1883?client_id=sub&tx=sensor/down&rx=sensor/up");
+```
 
 ## API Summary
 

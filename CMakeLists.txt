@@ -79,6 +79,24 @@ target_include_directories(unitransmit_tests_serial PRIVATE
 )
 add_test(NAME unitransmit_tests_serial COMMAND unitransmit_tests_serial)
 
+add_executable(unitransmit_tests_gatt
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/gatt_test.cpp
+)
+target_link_libraries(unitransmit_tests_gatt PRIVATE ${PROJECT_NAME}_static)
+target_include_directories(unitransmit_tests_gatt PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+add_test(NAME unitransmit_tests_gatt COMMAND unitransmit_tests_gatt)
+
+add_executable(unitransmit_tests_mqtt
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/mqtt_test.cpp
+)
+target_link_libraries(unitransmit_tests_mqtt PRIVATE ${PROJECT_NAME}_static)
+target_include_directories(unitransmit_tests_mqtt PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+add_test(NAME unitransmit_tests_mqtt COMMAND unitransmit_tests_mqtt)
+
 add_executable(unitransmit_terminal_sim
         ${CMAKE_CURRENT_SOURCE_DIR}/test/terminal_sim.cpp
 )
