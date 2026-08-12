@@ -67,22 +67,22 @@ std::unique_ptr<ITransport> make_transport(const UrlParts &parts, const Options 
         return std::make_unique<LoopbackTransport>(parts.scheme);
     }
     if (parts.scheme == "udp") {
-        return std::make_unique<UdpTransport>(parts, opts);
+        return std::make_unique<UdpTransport>(UdpConfig::from_url(parts, opts));
     }
     if (parts.scheme == "tcp") {
-        return std::make_unique<TcpClientTransport>(parts, opts);
+        return std::make_unique<TcpClientTransport>(TcpClientConfig::from_url(parts, opts));
     }
     if (parts.scheme == "tcp-s") {
-        return std::make_unique<TcpServerTransport>(parts, opts);
+        return std::make_unique<TcpServerTransport>(TcpServerConfig::from_url(parts, opts));
     }
     if (parts.scheme == "serial") {
-        return std::make_unique<SerialTransport>(parts, opts);
+        return std::make_unique<SerialTransport>(SerialConfig::from_url(parts, opts));
     }
     if (parts.scheme == "gatt") {
-        return std::make_unique<GattTransport>(parts, opts);
+        return std::make_unique<GattTransport>(GattConfig::from_url(parts, opts));
     }
     if (parts.scheme == "mqtt") {
-        return std::make_unique<MqttTransport>(parts, opts);
+        return std::make_unique<MqttTransport>(MqttConfig::from_url(parts, opts));
     }
     return std::make_unique<LoopbackTransport>(parts.scheme);
 }

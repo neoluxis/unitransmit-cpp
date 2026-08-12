@@ -66,12 +66,29 @@ std::string make_client_id() {
 
 } // namespace
 
-MqttTransport::MqttTransport(const UrlParts &parts, const Options &opts) : opts_(opts) {
-    tx_topic_ = !opts.tx_topic.empty() ? opts.tx_topic : opts.topic;
-    rx_topic_ = !opts.rx_topic.empty() ? opts.rx_topic : opts.topic;
-    client_id_ = !opts.client_id.empty() ? opts.client_id : make_client_id();
+// --- MqttConfig -------------------------------------------------------------
 
-    if (!connect_broker(parts)) {
+MqttConfig MqttConfig::from_url(const UrlParts &parts, const Options &opts) {
+    MqttConfig cfg;
+    if (!parts.host.empty()) {
+        cfg.host = parts.host;
+    }
+    if (parts.port > 0) {
+        cfg.port = parts.port;
+    }
+    cfg.tx_topic = !opts.tx_topic.empty() ? opts.tx_topic : opts.topic;
+    cfg.rx_topic = !opts.rx_topic.empty() ? opts.rx_topic : opts.topic;
+    cfg.client_id = !opts.client_id.empty() ? opts.client_id : make_client_id();
+    cfg.keep_alive_sec = opts.keep_alive_sec;
+    cfg.blocking = opts.blocking;
+    cfg.timeout_ms = opts.timeout_ms;
+    return cfg;
+}
+
+// --- MqttTransport ----------------------------------------------------------
+
+MqttTransport::MqttTransport(const MqttConfig &config) : config_(config) {
+    if (!connect_broker()) {
         return;
     }
     if (!send_connect() || !receive_connack()) {
@@ -81,7 +98,7 @@ MqttTransport::MqttTransport(const UrlParts &parts, const Options &opts) : opts_
         close_socket_only();
         return;
     }
-    if (!rx_topic_.empty() && !send_subscribe()) {
+    if (!config_.rx_topic.empty() && !send_subscribe()) {
         if (last_error_.empty()) {
             set_last_error("mqtt subscribe failed");
         }
@@ -93,6 +110,9 @@ MqttTransport::MqttTransport(const UrlParts &parts, const Options &opts) : opts_
     connected_ = true;
     receiver_thread_ = std::thread([this]() { receiver_loop(); });
 }
+
+MqttTransport::MqttTransport(const UrlParts &parts, const Options &opts)
+    : MqttTransport(MqttConfig::from_url(parts, opts)) {}
 
 MqttTransport::~MqttTransport() {
     stop_ = true;
@@ -115,7 +135,7 @@ std::vector<std::uint8_t> MqttTransport::read() { return read(1); }
 
 std::vector<std::uint8_t> MqttTransport::read_all() {
     std::unique_lock<std::mutex> lock(queue_mutex_);
-    if (queue_.empty() && opts_.blocking && !wait_for_data(lock)) {
+    if (queue_.empty() && config_.blocking && !wait_for_data(lock)) {
         return {};
     }
     return take_bytes(queue_.size());
@@ -126,15 +146,15 @@ std::vector<std::uint8_t> MqttTransport::read(std::size_t max_bytes) {
         return {};
     }
     std::unique_lock<std::mutex> lock(queue_mutex_);
-    if (queue_.empty() && opts_.blocking && !wait_for_data(lock)) {
+    if (queue_.empty() && config_.blocking && !wait_for_data(lock)) {
         return {};
     }
     return take_bytes(std::min(max_bytes, queue_.size()));
 }
 
 std::size_t MqttTransport::write(const std::uint8_t *data, std::size_t size) {
-    if (!connected_ || !data || size == 0 || tx_topic_.empty()) {
-        if (tx_topic_.empty()) {
+    if (!connected_ || !data || size == 0 || config_.tx_topic.empty()) {
+        if (config_.tx_topic.empty()) {
             set_last_error("mqtt tx topic is empty");
         } else if (!connected_ && last_error_.empty()) {
             set_last_error("mqtt broker is not connected");
@@ -142,7 +162,7 @@ std::size_t MqttTransport::write(const std::uint8_t *data, std::size_t size) {
         return 0;
     }
     std::vector<std::uint8_t> variable_header;
-    append_string(variable_header, tx_topic_);
+    append_string(variable_header, config_.tx_topic);
 
     std::vector<std::uint8_t> packet;
     packet.push_back(0x30);
@@ -154,11 +174,8 @@ std::size_t MqttTransport::write(const std::uint8_t *data, std::size_t size) {
     return send_packet(packet) ? size : 0;
 }
 
-bool MqttTransport::connect_broker(const UrlParts &parts) {
+bool MqttTransport::connect_broker() {
     ensure_wsa();
-    const std::string host = parts.host.empty() ? "127.0.0.1" : parts.host;
-    const int port = parts.port > 0 ? parts.port : 1883;
-
     sock_ = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_ == kInvalidSocket) {
         set_last_error("mqtt socket creation failed");
@@ -167,7 +184,7 @@ bool MqttTransport::connect_broker(const UrlParts &parts) {
 
     sockaddr_storage addr{};
     socklen_t addr_len = 0;
-    if (!resolve_address(host, port, addr, addr_len, SOCK_STREAM)) {
+    if (!resolve_address(config_.host, config_.port, addr, addr_len, SOCK_STREAM)) {
         set_last_error("mqtt broker address resolution failed");
         close_socket_only();
         return false;
@@ -204,8 +221,8 @@ bool MqttTransport::send_connect() {
     append_string(payload, "MQTT");
     payload.push_back(0x04);
     payload.push_back(0x02);
-    append_u16(payload, static_cast<std::uint16_t>(std::max(0, opts_.keep_alive_sec)));
-    append_string(payload, client_id_);
+    append_u16(payload, static_cast<std::uint16_t>(std::max(0, config_.keep_alive_sec)));
+    append_string(payload, config_.client_id);
 
     std::vector<std::uint8_t> packet;
     packet.push_back(0x10);
@@ -218,7 +235,7 @@ bool MqttTransport::send_connect() {
 bool MqttTransport::receive_connack() {
     std::uint8_t header = 0;
     std::vector<std::uint8_t> payload;
-    if (!recv_packet(header, payload, opts_.timeout_ms)) {
+    if (!recv_packet(header, payload, config_.timeout_ms)) {
         set_last_error("mqtt connack timeout or read failure");
         return false;
     }
@@ -232,7 +249,7 @@ bool MqttTransport::receive_connack() {
 bool MqttTransport::send_subscribe() {
     std::vector<std::uint8_t> variable_header;
     append_u16(variable_header, 1);
-    append_string(variable_header, rx_topic_);
+    append_string(variable_header, config_.rx_topic);
     variable_header.push_back(0x00);
 
     std::vector<std::uint8_t> packet;
@@ -348,11 +365,11 @@ bool MqttTransport::wait_for_data(std::unique_lock<std::mutex> &lock) const {
     if (!connected_) {
         return false;
     }
-    if (opts_.timeout_ms < 0) {
+    if (config_.timeout_ms < 0) {
         queue_cv_.wait(lock, [this]() { return !queue_.empty() || !connected_; });
         return !queue_.empty();
     }
-    return queue_cv_.wait_for(lock, std::chrono::milliseconds(opts_.timeout_ms),
+    return queue_cv_.wait_for(lock, std::chrono::milliseconds(config_.timeout_ms),
                               [this]() { return !queue_.empty() || !connected_; }) &&
            !queue_.empty();
 }

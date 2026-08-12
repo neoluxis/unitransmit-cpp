@@ -3,12 +3,26 @@
 #include "cc/neolux/utils/unitransmit/Protocol.h"
 #include "cc/neolux/utils/unitransmit/Unitransmit.h"
 
+#include <string>
 #include <vector>
 
 namespace cc::neolux::utils::unitransmit {
 
+struct SerialConfig {
+    std::string path;
+    int baud = 115200;
+    int data_bits = 8;
+    int stop_bits = 1;
+    char parity = 'n';
+    bool blocking = true;
+    int timeout_ms = -1;
+
+    static SerialConfig from_url(const UrlParts &parts, const Options &opts);
+};
+
 class SerialTransport final : public ITransport {
 public:
+    explicit SerialTransport(const SerialConfig &config);
     SerialTransport(const UrlParts &parts, const Options &opts);
     ~SerialTransport() override;
 
@@ -19,7 +33,7 @@ public:
     std::size_t write(const std::uint8_t *data, std::size_t size) override;
 
 private:
-    Options opts_;
+    SerialConfig config_;
 #ifdef _WIN32
     void close_handle();
     void *handle_ = nullptr;

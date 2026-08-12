@@ -12,7 +12,20 @@
 
 namespace cc::neolux::utils::unitransmit {
 
-TcpClientTransport::TcpClientTransport(const UrlParts &parts, const Options &opts) : opts_(opts) {
+// --- TcpClientConfig --------------------------------------------------------
+
+TcpClientConfig TcpClientConfig::from_url(const UrlParts &parts, const Options &opts) {
+    TcpClientConfig cfg;
+    cfg.host = parts.host;
+    cfg.port = parts.port;
+    cfg.blocking = opts.blocking;
+    cfg.timeout_ms = opts.timeout_ms;
+    return cfg;
+}
+
+// --- TcpClientTransport -----------------------------------------------------
+
+TcpClientTransport::TcpClientTransport(const TcpClientConfig &config) : config_(config) {
     ensure_wsa();
     sock_ = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_ == kInvalidSocket) {
@@ -21,7 +34,7 @@ TcpClientTransport::TcpClientTransport(const UrlParts &parts, const Options &opt
 
     sockaddr_storage addr{};
     socklen_t addr_len = 0;
-    if (!resolve_address(parts.host, parts.port, addr, addr_len, SOCK_STREAM)) {
+    if (!resolve_address(config_.host, config_.port, addr, addr_len, SOCK_STREAM)) {
         close_socket(sock_);
         sock_ = kInvalidSocket;
         return;
@@ -34,6 +47,9 @@ TcpClientTransport::TcpClientTransport(const UrlParts &parts, const Options &opt
     set_socket_nonblocking(sock_);
 }
 
+TcpClientTransport::TcpClientTransport(const UrlParts &parts, const Options &opts)
+    : TcpClientTransport(TcpClientConfig::from_url(parts, opts)) {}
+
 TcpClientTransport::~TcpClientTransport() { close_socket(sock_); }
 
 std::size_t TcpClientTransport::in_waiting() const { return socket_in_waiting(sock_); }
@@ -43,8 +59,8 @@ std::vector<std::uint8_t> TcpClientTransport::read() { return read(1); }
 std::vector<std::uint8_t> TcpClientTransport::read_all() {
     std::vector<std::uint8_t> out;
     std::size_t available = in_waiting();
-    if (available == 0 && opts_.blocking) {
-        if (!wait_for_read(sock_, opts_.timeout_ms)) {
+    if (available == 0 && config_.blocking) {
+        if (!wait_for_read(sock_, config_.timeout_ms)) {
             return out;
         }
         available = in_waiting();
@@ -64,8 +80,8 @@ std::vector<std::uint8_t> TcpClientTransport::read(std::size_t max_bytes) {
     if (sock_ == kInvalidSocket || max_bytes == 0) {
         return {};
     }
-    if (opts_.blocking) {
-        if (!wait_for_read(sock_, opts_.timeout_ms)) {
+    if (config_.blocking) {
+        if (!wait_for_read(sock_, config_.timeout_ms)) {
             return {};
         }
     }
@@ -89,7 +105,21 @@ std::size_t TcpClientTransport::write(const std::uint8_t *data, std::size_t size
     return static_cast<std::size_t>(rc);
 }
 
-TcpServerTransport::TcpServerTransport(const UrlParts &parts, const Options &opts) : opts_(opts) {
+// --- TcpServerConfig --------------------------------------------------------
+
+TcpServerConfig TcpServerConfig::from_url(const UrlParts &parts, const Options &opts) {
+    TcpServerConfig cfg;
+    cfg.host = parts.host;
+    cfg.port = parts.port;
+    cfg.blocking = opts.blocking;
+    cfg.timeout_ms = opts.timeout_ms;
+    cfg.max_connect = opts.max_connect;
+    return cfg;
+}
+
+// --- TcpServerTransport -----------------------------------------------------
+
+TcpServerTransport::TcpServerTransport(const TcpServerConfig &config) : config_(config) {
     ensure_wsa();
     listen_sock_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_sock_ == kInvalidSocket) {
@@ -106,7 +136,7 @@ TcpServerTransport::TcpServerTransport(const UrlParts &parts, const Options &opt
 
     sockaddr_storage addr{};
     socklen_t addr_len = 0;
-    if (!resolve_address(parts.host, parts.port, addr, addr_len, SOCK_STREAM)) {
+    if (!resolve_address(config_.host, config_.port, addr, addr_len, SOCK_STREAM)) {
         close_socket(listen_sock_);
         listen_sock_ = kInvalidSocket;
         return;
@@ -123,6 +153,9 @@ TcpServerTransport::TcpServerTransport(const UrlParts &parts, const Options &opt
     }
     set_socket_nonblocking(listen_sock_);
 }
+
+TcpServerTransport::TcpServerTransport(const UrlParts &parts, const Options &opts)
+    : TcpServerTransport(TcpServerConfig::from_url(parts, opts)) {}
 
 TcpServerTransport::~TcpServerTransport() {
     for (auto sock : clients_) {
@@ -146,8 +179,8 @@ std::vector<std::uint8_t> TcpServerTransport::read() { return read(1); }
 std::vector<std::uint8_t> TcpServerTransport::read_all() {
     std::vector<std::uint8_t> out;
     std::size_t available = in_waiting();
-    if (available == 0 && opts_.blocking) {
-        if (!wait_for_any_client(opts_.timeout_ms)) {
+    if (available == 0 && config_.blocking) {
+        if (!wait_for_any_client(config_.timeout_ms)) {
             return out;
         }
         available = in_waiting();
@@ -169,7 +202,7 @@ std::vector<std::uint8_t> TcpServerTransport::read(std::size_t max_bytes) {
     }
     accept_clients();
     if (clients_.empty()) {
-        if (opts_.blocking) {
+        if (config_.blocking) {
             if (!accept_blocking()) {
                 return {};
             }
@@ -178,7 +211,7 @@ std::vector<std::uint8_t> TcpServerTransport::read(std::size_t max_bytes) {
         }
     }
 
-    if (opts_.blocking && !wait_for_any_client(opts_.timeout_ms)) {
+    if (config_.blocking && !wait_for_any_client(config_.timeout_ms)) {
         return {};
     }
 
@@ -205,7 +238,7 @@ std::size_t TcpServerTransport::write(const std::uint8_t *data, std::size_t size
         return 0;
     }
     std::size_t total = 0;
-    int remaining = opts_.max_connect;
+    int remaining = config_.max_connect;
     for (auto sock : clients_) {
         if (sock == kInvalidSocket) {
             continue;
@@ -213,7 +246,7 @@ std::size_t TcpServerTransport::write(const std::uint8_t *data, std::size_t size
         int rc = send(sock, reinterpret_cast<const char *>(data), static_cast<int>(size), 0);
         if (rc > 0) {
             total = static_cast<std::size_t>(rc);
-            if (opts_.max_connect > 0) {
+            if (config_.max_connect > 0) {
                 --remaining;
                 if (remaining <= 0) {
                     break;
@@ -237,7 +270,7 @@ void TcpServerTransport::accept_clients() {
         }
         set_socket_nonblocking(client);
         clients_.push_back(client);
-        if (opts_.max_connect > 0 && static_cast<int>(clients_.size()) >= opts_.max_connect) {
+        if (config_.max_connect > 0 && static_cast<int>(clients_.size()) >= config_.max_connect) {
             break;
         }
     }
@@ -247,7 +280,7 @@ bool TcpServerTransport::accept_blocking() {
     if (listen_sock_ == kInvalidSocket) {
         return false;
     }
-    if (!wait_for_read(listen_sock_, opts_.timeout_ms)) {
+    if (!wait_for_read(listen_sock_, config_.timeout_ms)) {
         return false;
     }
     accept_clients();

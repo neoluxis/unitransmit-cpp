@@ -26,7 +26,8 @@ std::string non_empty_or(std::string value, const std::string &fallback) {
     return value.empty() ? fallback : value;
 }
 
-EndpointKey make_key(const std::string &device, const std::string &service, const std::string &characteristic) {
+EndpointKey make_key(const std::string &device, const std::string &service,
+                     const std::string &characteristic) {
     return {device, service, characteristic};
 }
 
@@ -55,7 +56,8 @@ std::shared_ptr<GattTransport::EndpointBuffer> find_endpoint(const EndpointKey &
     return endpoint;
 }
 
-void unregister_endpoint(const EndpointKey &key, const std::shared_ptr<GattTransport::EndpointBuffer> &endpoint) {
+void unregister_endpoint(const EndpointKey &key,
+                         const std::shared_ptr<GattTransport::EndpointBuffer> &endpoint) {
     std::lock_guard<std::mutex> lock(g_registry_mutex);
     auto it = g_registry.find(key);
     if (it == g_registry.end()) {
@@ -69,31 +71,45 @@ void unregister_endpoint(const EndpointKey &key, const std::shared_ptr<GattTrans
 
 } // namespace
 
-GattTransport::GattTransport(const UrlParts &parts, const Options &opts) : opts_(opts) {
-    local_device_ = non_empty_or(query_value(parts, "device"), parts.host);
-    remote_device_ = query_value(parts, "remote");
-    service_ = non_empty_or(query_value(parts, "service"), parts.path);
-    tx_char_ = query_value(parts, "tx");
-    rx_char_ = query_value(parts, "rx");
+// --- GattConfig -------------------------------------------------------------
 
-    if (service_.empty()) {
-        service_ = "default-service";
+GattConfig GattConfig::from_url(const UrlParts &parts, const Options &opts) {
+    GattConfig cfg;
+    cfg.local_device = non_empty_or(query_value(parts, "device"), parts.host);
+    cfg.remote_device = query_value(parts, "remote");
+    cfg.service = non_empty_or(query_value(parts, "service"), parts.path);
+    cfg.tx_char = query_value(parts, "tx");
+    cfg.rx_char = query_value(parts, "rx");
+
+    if (cfg.service.empty()) {
+        cfg.service = "default-service";
     }
-    if (tx_char_.empty()) {
-        tx_char_ = "tx";
+    if (cfg.tx_char.empty()) {
+        cfg.tx_char = "tx";
     }
-    if (rx_char_.empty()) {
-        rx_char_ = "rx";
+    if (cfg.rx_char.empty()) {
+        cfg.rx_char = "rx";
     }
-    if (local_device_.empty()) {
-        local_device_ = "gatt-local";
+    if (cfg.local_device.empty()) {
+        cfg.local_device = "gatt-local";
     }
 
-    inbound_ = register_endpoint(make_key(local_device_, service_, rx_char_));
+    cfg.blocking = opts.blocking;
+    cfg.timeout_ms = opts.timeout_ms;
+    return cfg;
 }
 
+// --- GattTransport ----------------------------------------------------------
+
+GattTransport::GattTransport(const GattConfig &config) : config_(config) {
+    inbound_ = register_endpoint(make_key(config_.local_device, config_.service, config_.rx_char));
+}
+
+GattTransport::GattTransport(const UrlParts &parts, const Options &opts)
+    : GattTransport(GattConfig::from_url(parts, opts)) {}
+
 GattTransport::~GattTransport() {
-    unregister_endpoint(make_key(local_device_, service_, rx_char_), inbound_);
+    unregister_endpoint(make_key(config_.local_device, config_.service, config_.rx_char), inbound_);
 }
 
 std::size_t GattTransport::in_waiting() const {
@@ -111,7 +127,7 @@ std::vector<std::uint8_t> GattTransport::read_all() {
         return {};
     }
     std::unique_lock<std::mutex> lock(inbound_->mutex);
-    if (inbound_->bytes.empty() && opts_.blocking && !wait_for_data(lock)) {
+    if (inbound_->bytes.empty() && config_.blocking && !wait_for_data(lock)) {
         return {};
     }
     std::vector<std::uint8_t> out;
@@ -128,7 +144,7 @@ std::vector<std::uint8_t> GattTransport::read(std::size_t max_bytes) {
         return {};
     }
     std::unique_lock<std::mutex> lock(inbound_->mutex);
-    if (inbound_->bytes.empty() && opts_.blocking && !wait_for_data(lock)) {
+    if (inbound_->bytes.empty() && config_.blocking && !wait_for_data(lock)) {
         return {};
     }
     if (inbound_->bytes.empty()) {
@@ -145,10 +161,10 @@ std::vector<std::uint8_t> GattTransport::read(std::size_t max_bytes) {
 }
 
 std::size_t GattTransport::write(const std::uint8_t *data, std::size_t size) {
-    if (!data || size == 0 || remote_device_.empty()) {
+    if (!data || size == 0 || config_.remote_device.empty()) {
         return 0;
     }
-    auto outbound = find_endpoint(make_key(remote_device_, service_, tx_char_));
+    auto outbound = find_endpoint(make_key(config_.remote_device, config_.service, config_.tx_char));
     if (!outbound) {
         return 0;
     }
@@ -167,11 +183,11 @@ bool GattTransport::wait_for_data(std::unique_lock<std::mutex> &lock) const {
     if (!inbound_->bytes.empty()) {
         return true;
     }
-    if (opts_.timeout_ms < 0) {
+    if (config_.timeout_ms < 0) {
         inbound_->cv.wait(lock, [this]() { return !inbound_->bytes.empty(); });
         return !inbound_->bytes.empty();
     }
-    return inbound_->cv.wait_for(lock, std::chrono::milliseconds(opts_.timeout_ms),
+    return inbound_->cv.wait_for(lock, std::chrono::milliseconds(config_.timeout_ms),
                                  [this]() { return !inbound_->bytes.empty(); });
 }
 

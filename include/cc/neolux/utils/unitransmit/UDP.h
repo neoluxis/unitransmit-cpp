@@ -4,12 +4,26 @@
 #include "cc/neolux/utils/unitransmit/Unitransmit.h"
 #include "cc/neolux/utils/unitransmit/Utils.h"
 
+#include <string>
 #include <vector>
 
 namespace cc::neolux::utils::unitransmit {
 
+struct UdpConfig {
+    std::string host;
+    int port = -1;
+    std::string remote;
+    bool broadcast = false;
+    bool blocking = true;
+    int timeout_ms = -1;
+    int max_connect = 1;
+
+    static UdpConfig from_url(const UrlParts &parts, const Options &opts);
+};
+
 class UdpTransport final : public ITransport {
 public:
+    explicit UdpTransport(const UdpConfig &config);
     UdpTransport(const UrlParts &parts, const Options &opts);
     ~UdpTransport() override;
 
@@ -20,7 +34,7 @@ public:
     std::size_t write(const std::uint8_t *data, std::size_t size) override;
 
 private:
-    Options opts_;
+    UdpConfig config_;
     SocketHandle sock_ = kInvalidSocket;
     bool has_remote_ = false;
     sockaddr_storage remote_addr_{};

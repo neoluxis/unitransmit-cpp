@@ -4,12 +4,33 @@
 #include "cc/neolux/utils/unitransmit/Unitransmit.h"
 #include "cc/neolux/utils/unitransmit/Utils.h"
 
+#include <string>
 #include <vector>
 
 namespace cc::neolux::utils::unitransmit {
 
+struct TcpClientConfig {
+    std::string host;
+    int port = 0;
+    bool blocking = true;
+    int timeout_ms = -1;
+
+    static TcpClientConfig from_url(const UrlParts &parts, const Options &opts);
+};
+
+struct TcpServerConfig {
+    std::string host;
+    int port = 0;
+    bool blocking = true;
+    int timeout_ms = -1;
+    int max_connect = 1;
+
+    static TcpServerConfig from_url(const UrlParts &parts, const Options &opts);
+};
+
 class TcpClientTransport final : public ITransport {
 public:
+    explicit TcpClientTransport(const TcpClientConfig &config);
     TcpClientTransport(const UrlParts &parts, const Options &opts);
     ~TcpClientTransport() override;
 
@@ -20,12 +41,13 @@ public:
     std::size_t write(const std::uint8_t *data, std::size_t size) override;
 
 private:
-    Options opts_;
+    TcpClientConfig config_;
     SocketHandle sock_ = kInvalidSocket;
 };
 
 class TcpServerTransport final : public ITransport {
 public:
+    explicit TcpServerTransport(const TcpServerConfig &config);
     TcpServerTransport(const UrlParts &parts, const Options &opts);
     ~TcpServerTransport() override;
 
@@ -40,7 +62,7 @@ private:
     bool accept_blocking();
     bool wait_for_any_client(int timeout_ms);
 
-    Options opts_;
+    TcpServerConfig config_;
     SocketHandle listen_sock_ = kInvalidSocket;
     std::vector<SocketHandle> clients_;
 };

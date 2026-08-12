@@ -13,6 +13,18 @@
 
 namespace cc::neolux::utils::unitransmit {
 
+struct GattConfig {
+    std::string local_device;
+    std::string remote_device;
+    std::string service;
+    std::string tx_char;
+    std::string rx_char;
+    bool blocking = true;
+    int timeout_ms = -1;
+
+    static GattConfig from_url(const UrlParts &parts, const Options &opts);
+};
+
 class GattTransport final : public ITransport {
 public:
     struct EndpointBuffer {
@@ -21,6 +33,7 @@ public:
         std::deque<std::uint8_t> bytes;
     };
 
+    explicit GattTransport(const GattConfig &config);
     GattTransport(const UrlParts &parts, const Options &opts);
     ~GattTransport() override;
 
@@ -31,12 +44,7 @@ public:
     std::size_t write(const std::uint8_t *data, std::size_t size) override;
 
 private:
-    std::string local_device_;
-    std::string remote_device_;
-    std::string service_;
-    std::string tx_char_;
-    std::string rx_char_;
-    Options opts_;
+    GattConfig config_;
     std::shared_ptr<EndpointBuffer> inbound_;
 
     bool wait_for_data(std::unique_lock<std::mutex> &lock) const;

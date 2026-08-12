@@ -14,17 +14,32 @@
 
 namespace cc::neolux::utils::unitransmit {
 
-#ifdef _WIN32
-SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : opts_(opts) {
-    std::string path = parts.path;
-    if (path.empty()) {
-        path = parts.host;
+// --- SerialConfig -----------------------------------------------------------
+
+SerialConfig SerialConfig::from_url(const UrlParts &parts, const Options &opts) {
+    SerialConfig cfg;
+    cfg.path = parts.path;
+    if (cfg.path.empty()) {
+        cfg.path = parts.host;
     }
-    if (path.empty()) {
+    cfg.baud = opts.baud;
+    cfg.data_bits = opts.data_bits;
+    cfg.stop_bits = opts.stop_bits;
+    cfg.parity = opts.parity;
+    cfg.blocking = opts.blocking;
+    cfg.timeout_ms = opts.timeout_ms;
+    return cfg;
+}
+
+// --- SerialTransport --------------------------------------------------------
+
+#ifdef _WIN32
+SerialTransport::SerialTransport(const SerialConfig &config) : config_(config) {
+    if (config_.path.empty()) {
         return;
     }
-    handle_ = CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
-                          FILE_ATTRIBUTE_NORMAL, nullptr);
+    handle_ = CreateFileA(config_.path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                          OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle_ == INVALID_HANDLE_VALUE) {
         handle_ = nullptr;
         return;
@@ -36,26 +51,26 @@ SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : o
         close_handle();
         return;
     }
-    dcb.BaudRate = static_cast<DWORD>(opts_.baud);
-    dcb.ByteSize = static_cast<BYTE>(opts_.data_bits);
+    dcb.BaudRate = static_cast<DWORD>(config_.baud);
+    dcb.ByteSize = static_cast<BYTE>(config_.data_bits);
     dcb.Parity = NOPARITY;
-    if (opts_.parity == 'e') {
+    if (config_.parity == 'e') {
         dcb.Parity = EVENPARITY;
-    } else if (opts_.parity == 'o') {
+    } else if (config_.parity == 'o') {
         dcb.Parity = ODDPARITY;
     }
-    dcb.StopBits = (opts_.stop_bits == 2) ? TWOSTOPBITS : ONESTOPBIT;
+    dcb.StopBits = (config_.stop_bits == 2) ? TWOSTOPBITS : ONESTOPBIT;
     if (!SetCommState(handle_, &dcb)) {
         close_handle();
         return;
     }
 
     COMMTIMEOUTS timeouts{};
-    if (opts_.blocking) {
+    if (config_.blocking) {
         timeouts.ReadIntervalTimeout = 0;
         timeouts.ReadTotalTimeoutMultiplier = 0;
         timeouts.ReadTotalTimeoutConstant =
-            (opts_.timeout_ms >= 0) ? static_cast<DWORD>(opts_.timeout_ms) : 0;
+            (config_.timeout_ms >= 0) ? static_cast<DWORD>(config_.timeout_ms) : 0;
     } else {
         timeouts.ReadIntervalTimeout = MAXDWORD;
         timeouts.ReadTotalTimeoutMultiplier = 0;
@@ -65,6 +80,9 @@ SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : o
     timeouts.WriteTotalTimeoutConstant = 0;
     SetCommTimeouts(handle_, &timeouts);
 }
+
+SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts)
+    : SerialTransport(SerialConfig::from_url(parts, opts)) {}
 
 SerialTransport::~SerialTransport() { close_handle(); }
 
@@ -91,7 +109,7 @@ std::vector<std::uint8_t> SerialTransport::read() { return read(1); }
 
 std::vector<std::uint8_t> SerialTransport::read_all() {
     std::size_t available = in_waiting();
-    if (available == 0 && opts_.blocking) {
+    if (available == 0 && config_.blocking) {
         return read(1);
     }
     return read(available);
@@ -122,15 +140,11 @@ std::size_t SerialTransport::write(const std::uint8_t *data, std::size_t size) {
     return static_cast<std::size_t>(written);
 }
 #else
-SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : opts_(opts) {
-    std::string path = parts.path;
-    if (path.empty()) {
-        path = parts.host;
-    }
-    if (path.empty()) {
+SerialTransport::SerialTransport(const SerialConfig &config) : config_(config) {
+    if (config_.path.empty()) {
         return;
     }
-    fd_ = open(path.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+    fd_ = open(config_.path.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd_ < 0) {
         fd_ = -1;
         return;
@@ -144,7 +158,7 @@ SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : o
     }
 
     speed_t speed = B115200;
-    switch (opts_.baud) {
+    switch (config_.baud) {
         case 9600:
             speed = B9600;
             break;
@@ -166,7 +180,7 @@ SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : o
     cfsetospeed(&tio, speed);
 
     tio.c_cflag &= ~CSIZE;
-    switch (opts_.data_bits) {
+    switch (config_.data_bits) {
         case 7:
             tio.c_cflag |= CS7;
             break;
@@ -176,17 +190,17 @@ SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : o
             break;
     }
 
-    if (opts_.parity == 'e') {
+    if (config_.parity == 'e') {
         tio.c_cflag |= PARENB;
         tio.c_cflag &= ~PARODD;
-    } else if (opts_.parity == 'o') {
+    } else if (config_.parity == 'o') {
         tio.c_cflag |= PARENB;
         tio.c_cflag |= PARODD;
     } else {
         tio.c_cflag &= ~PARENB;
     }
 
-    if (opts_.stop_bits == 2) {
+    if (config_.stop_bits == 2) {
         tio.c_cflag |= CSTOPB;
     } else {
         tio.c_cflag &= ~CSTOPB;
@@ -199,6 +213,9 @@ SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts) : o
 
     tcsetattr(fd_, TCSANOW, &tio);
 }
+
+SerialTransport::SerialTransport(const UrlParts &parts, const Options &opts)
+    : SerialTransport(SerialConfig::from_url(parts, opts)) {}
 
 SerialTransport::~SerialTransport() {
     if (fd_ >= 0) {
@@ -221,8 +238,8 @@ std::vector<std::uint8_t> SerialTransport::read() { return read(1); }
 
 std::vector<std::uint8_t> SerialTransport::read_all() {
     std::size_t available = in_waiting();
-    if (available == 0 && opts_.blocking) {
-        if (!wait_for_fd(opts_.timeout_ms)) {
+    if (available == 0 && config_.blocking) {
+        if (!wait_for_fd(config_.timeout_ms)) {
             return {};
         }
         available = in_waiting();
@@ -234,8 +251,8 @@ std::vector<std::uint8_t> SerialTransport::read(std::size_t max_bytes) {
     if (fd_ < 0 || max_bytes == 0) {
         return {};
     }
-    if (opts_.blocking) {
-        if (!wait_for_fd(opts_.timeout_ms)) {
+    if (config_.blocking) {
+        if (!wait_for_fd(config_.timeout_ms)) {
             return {};
         }
     }

@@ -15,8 +15,22 @@
 
 namespace cc::neolux::utils::unitransmit {
 
+struct MqttConfig {
+    std::string host = "127.0.0.1";
+    int port = 1883;
+    std::string client_id;
+    std::string tx_topic;
+    std::string rx_topic;
+    int keep_alive_sec = 30;
+    bool blocking = true;
+    int timeout_ms = -1;
+
+    static MqttConfig from_url(const UrlParts &parts, const Options &opts);
+};
+
 class MqttTransport final : public ITransport {
 public:
+    explicit MqttTransport(const MqttConfig &config);
     MqttTransport(const UrlParts &parts, const Options &opts);
     ~MqttTransport() override;
 
@@ -29,7 +43,7 @@ public:
     std::string last_error() const override;
 
 private:
-    bool connect_broker(const UrlParts &parts);
+    bool connect_broker();
     bool send_packet(const std::vector<std::uint8_t> &packet);
     bool send_connect();
     bool receive_connack();
@@ -43,11 +57,8 @@ private:
     void close_socket_only();
     void set_last_error(std::string value);
 
-    Options opts_;
+    MqttConfig config_;
     SocketHandle sock_ = kInvalidSocket;
-    std::string tx_topic_;
-    std::string rx_topic_;
-    std::string client_id_;
     mutable std::mutex queue_mutex_;
     mutable std::condition_variable queue_cv_;
     std::deque<std::uint8_t> queue_;
