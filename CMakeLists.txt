@@ -39,7 +39,44 @@ if (WIN32)
 endif ()
 
 if (UNITRANSMIT_BUILD_PYTHON)
-    message(WARNING "Python bindings are not built by CMake here. Use the pyproject.toml workflow instead.")
+    if (SKBUILD)
+        # pip / scikit-build-core 构建：
+        # 使用构建后端提供的 Python 环境。
+        set(PYBIND11_FINDPYTHON ON)
+    else ()
+        # 直接使用 CMake：要求显式指定 Python。
+        if (NOT Python_EXECUTABLE)
+            message(FATAL_ERROR
+                "Specify Python with -DPython_EXECUTABLE=/path/to/python"
+            )
+        endif ()
+        set(PYBIND11_FINDPYTHON ON)
+    endif ()
+
+    find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+
+    # 从选定的 Python 环境定位 pybind11。
+    execute_process(
+        COMMAND "${Python_EXECUTABLE}" -m pybind11 --cmakedir
+        OUTPUT_VARIABLE pybind11_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE PYBIND11_QUERY_RESULT
+    )
+    if (NOT PYBIND11_QUERY_RESULT EQUAL 0)
+        message(FATAL_ERROR
+            "pybind11 is unavailable in ${Python_EXECUTABLE}"
+        )
+    endif ()
+
+    find_package(pybind11 CONFIG REQUIRED)
+
+    pybind11_add_module(_unitransmit python/bindings.cpp)
+    target_link_libraries(_unitransmit PRIVATE ${PROJECT_NAME}_static)
+
+    install(TARGETS _unitransmit
+        LIBRARY DESTINATION unitransmit
+        RUNTIME DESTINATION unitransmit
+    )
 endif ()
 
 enable_testing()
